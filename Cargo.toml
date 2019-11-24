@@ -23,6 +23,7 @@ version = "0.15.0"
 features = [ "rand" ]
 
 [dependencies.clap]
-version = "~2.33"
+# Fix this by switching to the crate released version after 2.34+
+git = "https://github.com/clap-rs/clap.git"
+branch = "master"
 default-features = true
-features = [ "yaml" ]
