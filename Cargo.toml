@@ -10,7 +10,6 @@ edition = "2018"
 
 [dependencies]
 bitcoin = { git = "https://github.com/pandoracore/rust-bitcoin.git", branch = "develop" }
-bitcoin_hashes = { git = "https://github.com/pandoracore/bitcoin_hashes.git", branch = "hashnewtype-fix" }
 lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", branch = "refactor-commitments" }
 log = "~0.4"
 env_logger = "~0.7"
