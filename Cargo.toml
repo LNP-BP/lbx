@@ -9,8 +9,7 @@ readme = "README.md"
 edition = "2018"
 
 [dependencies]
-bitcoin = { git = "https://github.com/pandoracore/rust-bitcoin.git", branch = "develop" }
-lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", branch = "refactor-commitments" }
+lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", branch = "master" }
 log = "~0.4"
 env_logger = "~0.7"
 toml = "~0.5"
@@ -21,10 +20,6 @@ rand = "~0.7"
 [dependencies.bigint]
 version = "~4.4"
 features = [ "std" ]
-
-[dependencies.secp256k1]
-version = "~0.15"
-features = [ "rand" ]
 
 [dependencies.clap]
 # Fix this by switching to the crate released version after 2.34+

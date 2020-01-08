@@ -1,16 +1,32 @@
 extern crate rand;
 extern crate bigint;
+extern crate lnpbp;
 #[macro_use] extern crate clap;
 
-use std::{io, io::Read, io::Write, fs, str::FromStr, convert::TryInto};
-use std::collections::{HashSet, BTreeMap};
+use std::{
+    io::{self, Read, Write},
+    fs::{self, File},
+    str::FromStr,
+    marker::PhantomData,
+    convert::TryInto,
+    collections::{HashSet, BTreeMap}
+};
+
 use rand::Rng;
 use bigint::U256;
-use secp256k1::{Secp256k1, All, PublicKey};
-use lbpbp::commitments::{base::*, secp256k1::*};
-use bitcoin::hashes::{hex::*, sha256, sha256d, ripemd160, hash160, HashEngine, Hash, Hmac, HmacEngine};
-use bitcoin::util::psbt::PartiallySignedTransaction;
-use bitcoin::consensus::{serialize, deserialize};
+
+use lnpbp::bitcoin::{
+    secp256k1::{Secp256k1, All, PublicKey},
+    hashes::{hex::*, sha256, sha256d, ripemd160, hash160, HashEngine, Hash, Hmac, HmacEngine},
+    PublicKey as BitcoinPublicKey,
+    util::psbt::PartiallySignedTransaction,
+    consensus::{serialize, deserialize}
+};
+use lnpbp::{
+    AsSlice,
+    cmt::{EmbeddedCommitment, PubkeyCommitment}
+};
+
 
 enum Verbosity {
     Silent = 0,
@@ -66,6 +82,16 @@ macro_rules! vprintln {
         }
     })
 }
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Message<'a>(&'a [u8]);
+impl AsSlice for Message<'_> {
+    fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 
 fn main() -> io::Result<()> {
     fn conv_pubkey (pubkey_str: &str) -> Result<PublicKey, String> {
@@ -309,14 +335,10 @@ fn bp_tweak(digest: sha256::Hash, pubkey: PublicKey) {
 
 fn pubkey_commit(msg: &[u8], pubkey: PublicKey) {
     vprintln!(Laconic, "Committing to the message by tweaking the provided public key");
-
-    let mut tweaked_pubkey = pubkey.clone();
-
-    let engine = TweakEngine::new();
-    let digest = sha256::Hash::hash(msg);
-    let _ = engine.commit(&TweakSource(digest), &mut tweaked_pubkey);
-
-    println!("{}", tweaked_pubkey.to_hex());
+    let msg = Message(msg);
+    let commitment = PubkeyCommitment::commit_to(pubkey, msg).unwrap();
+    // let commitment: PubkeyCommitment = msg.commit_embed(&pubkey).unwrap();
+    println!("{}", commitment.tweaked.to_hex());
 }
 
 fn cv_commit(fee: u64, entropy: U256, msgs: Vec<&str>,
@@ -346,7 +368,7 @@ fn cv_commit(fee: u64, entropy: U256, msgs: Vec<&str>,
         vprint!(Verbose, ".");
         n += 1;
     }
-    vprintln!(Verbose, " found; size = {}", n);
+    vprintln!(Verbose, " the matching size is found: {}", n);
 
     vprint!(Verbose, "Preparing LNPBP-4 message ...");
     // TODO: Move the functionality into the library
@@ -369,7 +391,7 @@ fn cv_commit(fee: u64, entropy: U256, msgs: Vec<&str>,
     vprintln!(Verbose, "- LNPBP-4 commitment: {}", commitment.to_hex());
 
     vprint!(Verbose, "Reading PSBT input file {} ... ", tx_from);
-    let mut psbt_file = fs::File::open(tx_from)
+    let mut psbt_file = File::open(tx_from)
         .expect("can't open the file");
     let mut raw_psbt = Vec::new();
     let _ = psbt_file.read_to_end(&mut raw_psbt);
@@ -389,15 +411,15 @@ fn cv_commit(fee: u64, entropy: U256, msgs: Vec<&str>,
     vprintln!(Verbose, "- {} outputs found, using output #{} for embedding", output_count, output_no);
     let mut new_outputs = BTreeMap::new();
     for (key, value) in psbt.outputs[output_no].hd_keypaths.iter() {
-        let tweaked_key: bitcoin::PublicKey = key.clone();
-        // TODO: Do the actual tweak (requires change in used lnpbp branch)
-        new_outputs.insert(tweaked_key, value.clone());
+        let pk_cmt = PubkeyCommitment::commit_to(key.key, commitment)
+            .expect("internal error with public key commitment");
+        new_outputs.insert(BitcoinPublicKey{ compressed: true, key: pk_cmt.tweaked }, value.clone());
     }
     vprintln!(Verbose, "- {} public key are tweaked", new_outputs.len());
     psbt.outputs[output_no].hd_keypaths = new_outputs;
 
     vprint!(Verbose, "Writing PSBT with commitment to the file {} ... ", tx_to);
-    let mut out_file = fs::File::create(tx_to)
+    let mut out_file = File::create(tx_to)
         .expect("can't create output file");
     out_file.write_all(&serialize(&psbt))
         .expect("can't write to output file");
