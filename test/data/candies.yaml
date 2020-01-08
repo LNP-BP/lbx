@@ -1,0 +1,12 @@
+meta:
+  ver: 1
+  network: bitcoin:signet
+  ticker: CANDY
+  title: RGB Candies
+  description: Sample asset of no value
+  fractional_bits: 0 # Candies are not divisible :)
+  dust_limit: 1
+  max_supply: 1_000_000
+state:
+  - seal: 5700bdccfc6209a5460dc124403eed6c3f5ba58da0123b392ab0b1fa23306f27:0
+    value: 1_000_000
