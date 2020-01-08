@@ -9,7 +9,7 @@ readme = "README.md"
 edition = "2018"
 
 [dependencies]
-bitcoin = { git = "https://github.com/pandoracore/rust-bitcoin.git", branch = "develop" }
+bitcoin = { git = "https://github.com/pandoracore/rust-bitcoin.git", branch = "hashtypes" }
 lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", branch = "refactor-commitments" }
 log = "~0.4"
 env_logger = "~0.7"

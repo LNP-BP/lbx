@@ -1,11 +1,9 @@
 #[macro_use] extern crate clap;
 
-use std::{io, fs, thread, env, str::FromStr};
-use clap::ArgMatches;
-use secp256k1::{Secp256k1, All, PublicKey, Error as Secp256k1Error};
+use std::{io, str::FromStr};
+use secp256k1::{Secp256k1, All, PublicKey};
 use lbpbp::commitments::{base::*, secp256k1::*};
 use bitcoin::hashes::{hex::*, sha256, sha256d, ripemd160, hash160, HashEngine, Hash, Hmac, HmacEngine};
-use std::process::exit;
 
 enum Verbosity {
     Silent = 0,
@@ -62,7 +60,7 @@ fn main() -> io::Result<()> {
     fn conv_digest (hexdec_str: &str) -> Result<sha256::Hash, String> {
         match sha256::Hash::from_hex(hexdec_str) {
             Ok(hexdec) => Ok(hexdec),
-            Err(_) => Err(String::from("The provided string does not corresponds to a pubkey")),
+            Err(_) => Err(String::from("The provided string does not corresponds to SHA256")),
         }
     };
     fn conv_hexmsg (maybe_hexdec_str: &str) -> Result<Box<[u8]>, String> {
@@ -87,6 +85,20 @@ fn main() -> io::Result<()> {
         (author: "Dr Maxim Orlovsky <orlovsky@pandoracore.com>")
         (about: "LNP/BP technology command-line utility")
         (@arg verbose: -v ... #{0,2} +global "Sets verbosity level")
+        (@subcommand ("ec-inv") =>
+            (about: "inverses Secp256k1 point POINT y value")
+            (@arg POINT: +required "Secp256k1 point")
+        )
+        (@subcommand ("ec-add") =>
+            (about: "adds two Secp256k1 points POINT1 and POINT2")
+            (@arg POINT1: +required "Secp256k1 point #1")
+            (@arg POINT2: +required "Secp256k1 point #2")
+        )
+        (@subcommand ("ec-mul") =>
+            (about: "multiplies Secp256k1 point POINT on a SCALAR")
+            (@arg POINT: +required "Secp256k1 point")
+            (@arg SCALAR: +required "Scalar for multiplication")
+        )
         (@subcommand ("bp-ripemd160") =>
             (about: "computes RIPEMD160 digest for the given MSG")
             (@arg hex: -h --hex "Signifies that the message is a hexadecimal string")
@@ -137,6 +149,17 @@ fn main() -> io::Result<()> {
     }
 
     match matches.subcommand() {
+        ("ec-inv", Some(sm)) => ec_inv(
+            conv_pubkey(sm.value_of("POINT").unwrap()).unwrap()
+        ),
+        ("ec-add", Some(sm)) => ec_add(
+            conv_pubkey(sm.value_of("POINT1").unwrap()).unwrap(),
+            conv_pubkey(sm.value_of("POINT2").unwrap()).unwrap(),
+        ),
+        ("ec-mul", Some(sm)) => ec_mul(
+            conv_pubkey(sm.value_of("POINT").unwrap()).unwrap(),
+            &*conv_hexmsg(sm.value_of("SCALAR").unwrap()).unwrap()
+        ),
         ("bp-ripemd160", Some(sm)) => bp_ripemd160(
             &*conv_hexmsg(sm.value_of("MSG").unwrap()).unwrap()
         ),
@@ -169,6 +192,27 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn ec_inv(pubkey: PublicKey) {
+    vprintln!(Laconic, "Computing elleptic curve point inversion over x axis");
+    let new_point = pubkey.clone();
+    // TODO: Implement
+    println!("{}", new_point.to_hex());
+}
+
+fn ec_add(point1: PublicKey, point2: PublicKey) {
+    vprintln!(Laconic, "Computing addition of two elleptic curve points");
+    let new_point = point1.combine(&point2).unwrap();
+    println!("{}", new_point.to_hex());
+}
+
+fn ec_mul(pubkey: PublicKey, scalar: &[u8]) {
+    vprintln!(Laconic, "Computing elleptic curve point multiplication on a scalar");
+    let ec: Secp256k1<All> = Secp256k1::new();
+    let mut new_point = pubkey.clone();
+    let _ = new_point.mul_assign(&ec, scalar);
+    println!("{}", new_point.to_hex());
 }
 
 fn bp_ripemd160(msg: &[u8]) {
@@ -215,10 +259,10 @@ fn bp_hmacsha(msg: &[u8], pubkey: PublicKey) {
 
 fn bp_tweak(digest: sha256::Hash, pubkey: PublicKey) {
     vprintln!(Laconic, "Tweaking public key");
-    let EC: Secp256k1<All> = Secp256k1::new();
+    let ec: Secp256k1<All> = Secp256k1::new();
 
     let mut tweaked = pubkey.clone();
-    tweaked.add_exp_assign(&EC, &digest[..]).expect("Must not fail");
+    tweaked.add_exp_assign(&ec, &digest[..]).expect("Must not fail");
 
     println!("{}", tweaked.to_hex());
 }
