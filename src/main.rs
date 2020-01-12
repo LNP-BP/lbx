@@ -134,6 +134,10 @@ fn main() -> io::Result<()> {
         (author: "Dr Maxim Orlovsky <orlovsky@pandoracore.com>")
         (about: "LNP/BP technology command-line utility")
         (@arg verbose: -v ... #{0,2} +global "Sets verbosity level")
+        (@subcommand ("hex-u8") =>
+            (about: "converts hexadecimal string into Rust [u8] array")
+            (@arg HEX: +takes_value +required "source hexadecimal string")
+        )
         (@subcommand ("ec-inv") =>
             (about: "inverses Secp256k1 point POINT y value")
             (@arg POINT: +required "Secp256k1 point")
@@ -208,6 +212,9 @@ fn main() -> io::Result<()> {
     }
 
     match matches.subcommand() {
+        ("hex-u8", Some(sm)) => hex_u8(
+            &*conv_hexmsg(sm.value_of("HEX").unwrap()).unwrap(),
+        ),
         ("ec-inv", Some(sm)) => ec_inv(
             conv_pubkey(sm.value_of("POINT").unwrap()).unwrap()
         ),
@@ -266,6 +273,11 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn hex_u8(hex: &[u8]) {
+    vprintln!(Laconic, "Converting hexadecimal value into Rust byte array");
+    println!("{:?}", hex);
 }
 
 fn ec_inv(pubkey: PublicKey) {
