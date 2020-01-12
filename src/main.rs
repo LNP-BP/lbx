@@ -24,6 +24,7 @@ use lnpbp::bitcoin::{
 };
 use lnpbp::{
     AsSlice,
+    bp::tagged256::*,
     cmt::{EmbeddedCommitment, PubkeyCommitment}
 };
 
@@ -328,7 +329,7 @@ fn bp_hash256(msg: &[u8]) {
 fn bp_tagged256_midstate(tag: &str) {
     vprintln!(Laconic, "Computing tagged digest");
     let mut engine = sha256::Hash::engine();
-    let tag_hash = tag.as_bytes();
+    let tag_hash = sha256::Hash::hash(tag.as_bytes());
     engine.input(&tag_hash[..]);
     engine.input(&tag_hash[..]);
     println!("{:?}", engine.midstate());
@@ -336,11 +337,7 @@ fn bp_tagged256_midstate(tag: &str) {
 
 fn bp_tagged256(tag: &str, msg: &[u8]) {
     vprintln!(Laconic, "Computing tagged digest");
-    let tag_hash = sha256::Hash::hash(&tag.as_bytes()).to_vec();
-    let mut s = tag_hash.clone();
-    s.extend(&tag_hash);
-    s.extend(msg);
-    let digest = sha256::Hash::hash(&s[..]);
+    let digest = tagged256hash(tag, msg.to_vec());
     println!("{}", digest.to_hex());
 }
 
