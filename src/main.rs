@@ -169,10 +169,11 @@ fn main() -> io::Result<()> {
             (@arg MSG: +required "Source message for the digest")
         )
         (@subcommand ("bp-tagged256") =>
-            (about: "computes Bitcoin tagged hash for the given MSG")
-            (@arg hex: -h --hex "Signifies that the message is a hexadecimal string")
+            (about: "computes Bitcoin tagged hash for the given MSG or produces a midstate for the TAG")
+            (@arg hex: -h --hex requires[MSG] "Signifies that the message is a hexadecimal string")
+            (@arg midstate: -m --midstate conflicts_with[hex MSG] "Prints hash engine midstate for the tag without processing the message")
             (@arg TAG: +required "The tag for the hash (usually protocol-specific)")
-            (@arg MSG: +required  "Source message for the tagged hash")
+            (@arg MSG: conflicts_with[midstate]  "Source message for the tagged hash")
         )
         (@subcommand ("bp-hmacsha") =>
             (about: "computes HMAC-SHA256 over the MSG with a provided PUBKEY")
@@ -230,10 +231,17 @@ fn main() -> io::Result<()> {
         ("bp-hash256", Some(sm)) => bp_hash256(
             &*conv_hexmsg(sm.value_of("MSG").unwrap()).unwrap()
         ),
-        ("bp-tagged256", Some(sm)) => bp_tagged256(
-            sm.value_of("TAG").unwrap(),
-            &*conv_hexmsg(sm.value_of("MSG").unwrap()).unwrap()
-        ),
+        ("bp-tagged256", Some(sm)) => {
+            let tag = sm.value_of("TAG").unwrap();
+            if sm.is_present("midstate") {
+                bp_tagged256_midstate(tag)
+            } else {
+                bp_tagged256(
+                    tag,
+                    &*conv_hexmsg(sm.value_of("MSG").unwrap()).unwrap()
+                )
+            }
+        },
         ("bp-hmacsha", Some(sm)) => bp_hmacsha(
             &*conv_hexmsg(sm.value_of("MSG").unwrap()).unwrap(),
             conv_pubkey(sm.value_of("PUBKEY").unwrap()).unwrap()
@@ -303,6 +311,15 @@ fn bp_hash256(msg: &[u8]) {
     vprintln!(Laconic, "Computing double SHA256 digest");
     let digest = sha256d::Hash::hash(msg);
     println!("{}", digest.to_hex());
+}
+
+fn bp_tagged256_midstate(tag: &str) {
+    vprintln!(Laconic, "Computing tagged digest");
+    let mut engine = sha256::Hash::engine();
+    let tag_hash = tag.as_bytes();
+    engine.input(&tag_hash[..]);
+    engine.input(&tag_hash[..]);
+    println!("{:?}", engine.midstate());
 }
 
 fn bp_tagged256(tag: &str, msg: &[u8]) {
