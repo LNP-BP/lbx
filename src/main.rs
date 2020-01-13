@@ -25,7 +25,8 @@ use lnpbp::bitcoin::{
 use lnpbp::{
     AsSlice,
     bp::tagged256::*,
-    cmt::{EmbeddedCommitment, PubkeyCommitment}
+    cmt::{EmbeddedCommitment, PubkeyCommitment},
+    rgb::{schema::*, schemata::*},
 };
 
 
@@ -206,6 +207,11 @@ fn main() -> io::Result<()> {
             (@arg TX_OUTFILE: +required "File name to save modified transaction")
             (@arg CV_OUTFILE: +required "File name to save extra-transaction data required for the commitment validation")
         )
+        (@subcommand ("schema-id") =>
+            (about: "returns SchemaID for a given known schema")
+            (@arg NAME: * +case_insensitive possible_value[fungible collectible] "Name of the schema")
+            (@arg format: -f --format possible_value[hex bech32] default_value[hex] "Output format")
+        )
     ).get_matches();
 
     unsafe {
@@ -269,6 +275,10 @@ fn main() -> io::Result<()> {
             sm.value_of("TX_INFILE").unwrap(),
             sm.value_of("TX_OUTFILE").unwrap(),
             sm.value_of("CV_OUTFILE").unwrap()
+        ),
+        ("schema-id", Some(sm)) => schema_id(
+            sm.value_of("NAME").expect("required argument"),
+            sm.value_of("format").expect("argument has a default value"),
         ),
         _ => (),
     }
@@ -450,4 +460,14 @@ fn cv_commit(fee: u64, entropy: U256, msgs: Vec<&str>,
     out_file.write_all(&serialize(&psbt))
         .expect("can't write to output file");
     vprintln!(Verbose, "success");
+}
+
+fn schema_id(name: &str, format: &str) {
+    vprintln!(Laconic, "Schema ID for {} in {} format", name, format);
+    let schema = match name {
+        "fungible" => Rgb1::get_schema(),
+        "collectible" => Rgb2::get_schema(),
+        _ => panic!("Unknown schema name: {}", format),
+    };
+    println!("{}", schema.schema_id().to_hex());
 }
