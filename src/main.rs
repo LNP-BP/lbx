@@ -26,6 +26,7 @@ use lnpbp::{
     AsSlice,
     bp::tagged256::*,
     cmt::{EmbeddedCommitment, PubkeyCommitment},
+    csv::serialize::*,
     rgb::{schema::*, schemata::*},
 };
 
@@ -36,6 +37,7 @@ enum Verbosity {
     Verbose = 2
 }
 use Verbosity::*;
+use lnpbp::csv::Commitment;
 
 impl From<u64> for Verbosity {
     fn from(level: u64) -> Self {
@@ -212,6 +214,11 @@ fn main() -> io::Result<()> {
             (@arg NAME: * +case_insensitive possible_value[fungible collectible] "Name of the schema")
             (@arg format: -f --format possible_value[hex bech32] default_value[hex] "Output format")
         )
+        (@subcommand ("schema-data") =>
+            (about: "returns Schema raw data for a given known schema")
+            (@arg NAME: * +case_insensitive possible_value[fungible collectible] "Name of the schema")
+            (@arg format: -f --format possible_value[hex bech32] default_value[hex] "Output format")
+        )
     ).get_matches();
 
     unsafe {
@@ -277,6 +284,10 @@ fn main() -> io::Result<()> {
             sm.value_of("CV_OUTFILE").unwrap()
         ),
         ("schema-id", Some(sm)) => schema_id(
+            sm.value_of("NAME").expect("required argument"),
+            sm.value_of("format").expect("argument has a default value"),
+        ),
+        ("schema-data", Some(sm)) => schema_data(
             sm.value_of("NAME").expect("required argument"),
             sm.value_of("format").expect("argument has a default value"),
         ),
@@ -470,4 +481,14 @@ fn schema_id(name: &str, format: &str) {
         _ => panic!("Unknown schema name: {}", format),
     };
     println!("{}", schema.schema_id().to_hex());
+}
+
+fn schema_data(name: &str, format: &str) {
+    vprintln!(Laconic, "Schema ID for {} in {} format", name, format);
+    let schema = match name {
+        "fungible" => Rgb1::get_schema(),
+        "collectible" => Rgb2::get_schema(),
+        _ => panic!("Unknown schema name: {}", format),
+    };
+    println!("{}", storage_serialize(schema).unwrap().to_hex());
 }
