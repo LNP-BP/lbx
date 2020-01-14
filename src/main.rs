@@ -1,6 +1,7 @@
 extern crate rand;
 extern crate bigint;
 extern crate lnpbp;
+extern crate bech32;
 #[macro_use] extern crate clap;
 
 use std::{
@@ -13,6 +14,7 @@ use std::{
 };
 
 use rand::Rng;
+use bech32::ToBase32;
 use bigint::U256;
 
 use lnpbp::bitcoin::{
@@ -26,7 +28,7 @@ use lnpbp::{
     AsSlice,
     bp::tagged256::*,
     cmt::{EmbeddedCommitment, PubkeyCommitment},
-    csv::serialize::*,
+    csv::{serialize::*, Commitment},
     rgb::{schema::*, schemata::*},
 };
 
@@ -37,7 +39,6 @@ enum Verbosity {
     Verbose = 2
 }
 use Verbosity::*;
-use lnpbp::csv::Commitment;
 
 impl From<u64> for Verbosity {
     fn from(level: u64) -> Self {
@@ -65,6 +66,15 @@ struct Config {
 static mut CONFIG: Config = Config {
     verbosity: Verbosity::Silent
 };
+
+arg_enum!{
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+    #[non_exhaustive]
+    pub enum DisplayFormat {
+        Bech32,
+        Hex,
+    }
+}
 
 macro_rules! vprint {
     ( $level:expr, $($arg:tt)* ) => ({
@@ -285,11 +295,11 @@ fn main() -> io::Result<()> {
         ),
         ("schema-id", Some(sm)) => schema_id(
             sm.value_of("NAME").expect("required argument"),
-            sm.value_of("format").expect("argument has a default value"),
+            value_t!(sm, "format", DisplayFormat).expect("argument has a default value"),
         ),
         ("schema-data", Some(sm)) => schema_data(
             sm.value_of("NAME").expect("required argument"),
-            sm.value_of("format").expect("argument has a default value"),
+            value_t!(sm, "format", DisplayFormat).expect("argument has a default value"),
         ),
         _ => (),
     }
@@ -473,17 +483,22 @@ fn cv_commit(fee: u64, entropy: U256, msgs: Vec<&str>,
     vprintln!(Verbose, "success");
 }
 
-fn schema_id(name: &str, format: &str) {
+fn schema_id(name: &str, format: DisplayFormat) {
     vprintln!(Laconic, "Schema ID for {} in {} format", name, format);
     let schema = match name {
         "fungible" => Rgb1::get_schema(),
         "collectible" => Rgb2::get_schema(),
         _ => panic!("Unknown schema name: {}", format),
     };
-    println!("{}", schema.schema_id().to_hex());
+    let schema_id = schema.schema_id();
+    println!("{}", match format {
+        DisplayFormat::Hex => schema_id.to_hex(),
+        DisplayFormat::Bech32 => bech32::encode("rgb", &schema_id.to_base32()).unwrap(),
+        _ => String::from("<unknown format>"),
+    });
 }
 
-fn schema_data(name: &str, format: &str) {
+fn schema_data(name: &str, format: DisplayFormat) {
     vprintln!(Laconic, "Schema ID for {} in {} format", name, format);
     let schema = match name {
         "fungible" => Rgb1::get_schema(),

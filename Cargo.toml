@@ -10,6 +10,7 @@ edition = "2018"
 
 [dependencies]
 lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", branch = "master" }
+bech32 = "0.7.2"
 log = "~0.4"
 env_logger = "~0.7"
 toml = "~0.5"
