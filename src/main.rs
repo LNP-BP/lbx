@@ -131,6 +131,9 @@ impl AsSlice for Message<'_> {
 }
 
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BalanceAllocation(Txid, u16, rgb::Amount);
+
 fn main() -> io::Result<()> {
     fn conv_file_or_stdout(file_name: Option<&str>) -> Result<Box<dyn io::Write>, io::Error> {
         Ok(match file_name {
@@ -181,7 +184,19 @@ fn main() -> io::Result<()> {
             "collectible" => Rgb2::get_schema(),
             _ => Err(format!("Unknown schema name: {}", name))?,
         })
-    }
+    };
+    fn conv_allocations(alloc: &str) -> Result<BalanceAllocation, String> {
+        let mut data = alloc.split(":");
+        match (data.next(), data.next(), data.next(), data.next()) {
+            (Some(a), Some(b), Some(c), None) => Ok(BalanceAllocation(
+                conv_txid(a)?,
+                u16::from_str(b).map_err(|_| String::from("Transaction output number must be a 16-bit integer"))?,
+                conv_amount(u64::from_str(c).map_err(|_| String::from("Amount must be be a 64-bit integer"))?)
+                    .expect("We already converted the string to 64-bit number, must not fail now")
+            )),
+            _ => Err(String::from("Can't parse asset allocation data"))
+        }
+    };
 
     let verify_pubkey = |pubkey_str: String| -> Result<(), String> {
         conv_pubkey(&pubkey_str)?;
@@ -279,7 +294,7 @@ fn main() -> io::Result<()> {
             (@arg NAME: * +case_insensitive possible_value[fungible collectible] "Name of the schema")
             (@arg format: -f --format possible_value[hex bech32] default_value[hex] "Output format")
         )
-        (@subcommand ("issue-fungible") =>
+        (@subcommand ("fungible-issue") =>
             (about: "issues a fungible RGB asset")
             (@arg testnet: -T --testnet conflicts_with[signet regtest liquid] "Issues asset on Bitcoin testnet")
             (@arg signet: -S --signet conflicts_with[testnet regtest liquid] "Issues asset on Bitcoin signet network")
@@ -294,6 +309,11 @@ fn main() -> io::Result<()> {
             (@arg description: -d --description +takes_value "Asset detailed description")
             (@arg precision: -p --precision +takes_value "Precision, i.e. number of digits reserved for fractional part")
             (@arg dust: -l --("dust-limit") [dust] "Dust limit for asset transfers; defaults to no limit")
+        )
+        (@subcommand ("fungible-transfer") =>
+            (about: "transfer a fungible RGB asset to the new owning UTXO")
+            (@arg dest: -o --output [FILE] "Transfer proof output file in RGB format; if no provided prints to stdout")
+            (@arg alloc: <allocation> ... "New asset allocations in format <txid>:<vout>:<balance>")
         )
     ).get_matches();
     /*
@@ -394,7 +414,7 @@ fn main() -> io::Result<()> {
                 sm.value_of("DEST").expect("required argument")
             )
         },*/
-        ("issue-fungible", Some(sm)) => issue_fungible(
+        ("fungible-issue", Some(sm)) => fungible_issue(
             match (sm.is_present("testnet"), sm.is_present("regtest"), sm.is_present("signet"), sm.is_present("liquid")) {
                 (true, false, false, false) => schemata::Network::Testnet,
                 (false, true, false, false) => schemata::Network::Regtest,
@@ -412,6 +432,14 @@ fn main() -> io::Result<()> {
             value_t!(sm, "vout", u16).expect("argument must be a 16-bit unsigned integer"),
             &mut *conv_file_or_stdout(sm.value_of("dest")).expect("unable to write to the specified file")
         ),
+        ("fungible-transfer", Some(sm)) => {
+            let alloc = sm.values_of("alloc").expect("required argument");
+            let map: Result<Vec<BalanceAllocation>, String> = alloc.map(conv_allocations).collect();
+            fungible_tranfer(
+                map.unwrap_or_else(|err| panic!("{:?}", err)),
+                &mut *conv_file_or_stdout(sm.value_of("dest")).expect("unable to write to the specified file")
+            )
+        },
         _ => (),
     }
 
@@ -617,7 +645,7 @@ fn state_genesis(name: &str, schema: &Schema, format: DataFormat, src: &str, des
 }
 */
 
-fn issue_fungible(network: schemata::Network, ticker: &str, name: &str, descr: Option<&str>,
+fn fungible_issue(network: schemata::Network, ticker: &str, name: &str, descr: Option<&str>,
                   precision: u8, balance: rgb::Amount, dust: Option<Uint256>,
                   txid: Txid, vout: u16, ostream: &mut dyn io::Write) {
     vprintln!(
@@ -653,5 +681,29 @@ fn issue_fungible(network: schemata::Network, ticker: &str, name: &str, descr: O
 
     vprint!(Verbose, "Saving issuance state data ... ");
     genesis.storage_serialize(ostream);
+    vprintln!(Verbose, "success");
+}
+
+fn fungible_tranfer(allocations: Vec<BalanceAllocation>, ostream: &mut dyn io::Write) {
+    let map = allocations.into_iter().fold(
+        HashMap::new(), |mut acc, alloc| {
+            acc.insert(bitcoin::OutPoint { txid: alloc.0, vout: alloc.1 as u32 }, alloc.2);
+            acc
+        }
+    );
+    map.iter().for_each(|entry|
+        vprintln!(
+            Laconic, "Transferring {} of some asset (the protocol implies no knowledge of its type) to {}:{}",
+            entry.1, entry.0.txid, entry.0.vout
+        )
+    );
+
+    let tansfer = Rgb1::transfer(map).unwrap_or_else(|err| {
+        vprintln!(Verbose, " failed due to an error {:?}", err);
+        panic!("Exiting because of error");
+    });
+
+    vprint!(Verbose, "Saving transfer data ... ");
+    tansfer.storage_serialize(ostream);
     vprintln!(Verbose, "success");
 }
