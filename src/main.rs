@@ -1,6 +1,7 @@
 extern crate rand;
+// TODO: get rid of this external dependency in favour of bitcoin::util::Uint256
 extern crate bigint;
-extern crate lnpbp;
+#[macro_use] extern crate lnpbp;
 extern crate bech32;
 #[macro_use] extern crate clap;
 
@@ -10,7 +11,7 @@ use std::{
     str::FromStr,
     marker::PhantomData,
     convert::TryInto,
-    collections::{HashSet, BTreeMap}
+    collections::{HashMap, HashSet, BTreeMap}
 };
 
 use rand::Rng;
@@ -18,18 +19,30 @@ use bech32::ToBase32;
 use bigint::U256;
 
 use lnpbp::bitcoin::{
+    self,
     secp256k1::{Secp256k1, All, PublicKey},
     hashes::{hex::*, sha256, sha256d, ripemd160, hash160, HashEngine, Hash, Hmac, HmacEngine},
-    PublicKey as BitcoinPublicKey,
+    hash_types::{Txid},
     util::psbt::PartiallySignedTransaction,
+    util::uint::Uint256,
     consensus::{serialize, deserialize}
 };
 use lnpbp::{
-    AsSlice,
+    AsSlice, Wrapper,
     bp::tagged256::*,
     cmt::{EmbeddedCommitment, PubkeyCommitment},
-    csv::{serialize::*, Commitment},
-    rgb::{schema::*, schemata::*},
+    csv::{
+        serialize::{
+            storage::*,
+            commitment::*,
+        }
+    },
+    rgb::{
+        self,
+        state,
+        schema::Schema,
+        schemata::{self, Schemata, Rgb1, Rgb2},
+    }
 };
 
 
@@ -76,6 +89,17 @@ arg_enum!{
     }
 }
 
+arg_enum!{
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+    #[non_exhaustive]
+    pub enum DataFormat {
+        Rgb,
+        Yaml,
+        Json,
+        Toml,
+    }
+}
+
 macro_rules! vprint {
     ( $level:expr, $($arg:tt)* ) => ({
         unsafe {
@@ -108,30 +132,56 @@ impl AsSlice for Message<'_> {
 
 
 fn main() -> io::Result<()> {
-    fn conv_pubkey (pubkey_str: &str) -> Result<PublicKey, String> {
+    fn conv_file_or_stdout(file_name: Option<&str>) -> Result<Box<dyn io::Write>, io::Error> {
+        Ok(match file_name {
+            Some(file_name) => Box::new(io::BufWriter::new(File::create(file_name)?)),
+            None => Box::new(io::stdout()),
+        })
+    }
+
+    fn conv_txid(txid_str: &str) -> Result<Txid, String> {
+        match Txid::from_hex(txid_str) {
+            Ok(txid) => Ok(txid),
+            Err(_) => Err(String::from("The provided string does not corresponds to a transaction id"))
+        }
+    };
+    fn conv_pubkey(pubkey_str: &str) -> Result<PublicKey, String> {
         match PublicKey::from_str(pubkey_str) {
             Ok(pubkey) => Ok(pubkey),
             Err(_) => Err(String::from("The provided string does not corresponds to a pubkey"))
         }
     };
-    fn conv_u256 (hexdec_str: &str) -> Result<U256, String> {
+    fn conv_u256(hexdec_str: &str) -> Result<U256, String> {
         match U256::from_str(hexdec_str) {
             Ok(value) => Ok(value),
             Err(_) => Err(String::from("The provided string does not corresponds to SHA256")),
         }
     };
-    fn conv_digest (hexdec_str: &str) -> Result<sha256::Hash, String> {
+    fn conv_uint256(val: u64) -> Option<Uint256> {
+        Uint256::from_u64(val)
+    }
+    fn conv_amount(val: u64) -> Option<rgb::Amount> {
+        rgb::Amount::from_u64(val)
+    }
+    fn conv_digest(hexdec_str: &str) -> Result<sha256::Hash, String> {
         match sha256::Hash::from_hex(hexdec_str) {
             Ok(hexdec) => Ok(hexdec),
             Err(_) => Err(String::from("The provided string does not corresponds to SHA256")),
         }
     };
-    fn conv_hexmsg (maybe_hexdec_str: &str) -> Result<Box<[u8]>, String> {
+    fn conv_hexmsg(maybe_hexdec_str: &str) -> Result<Box<[u8]>, String> {
         match sha256::Hash::from_hex(maybe_hexdec_str) {
             Ok(hash) => Ok(Box::from(&hash[..])),
             Err(_) => Ok(Box::from(maybe_hexdec_str.as_bytes())),
         }
     };
+    fn conv_schema(name: &str) -> Result<&Schema, String> {
+        Ok(match name {
+            "fungible" => Rgb1::get_schema(),
+            "collectible" => Rgb2::get_schema(),
+            _ => Err(format!("Unknown schema name: {}", name))?,
+        })
+    }
 
     let verify_pubkey = |pubkey_str: String| -> Result<(), String> {
         conv_pubkey(&pubkey_str)?;
@@ -229,7 +279,32 @@ fn main() -> io::Result<()> {
             (@arg NAME: * +case_insensitive possible_value[fungible collectible] "Name of the schema")
             (@arg format: -f --format possible_value[hex bech32] default_value[hex] "Output format")
         )
+        (@subcommand ("issue-fungible") =>
+            (about: "issues a fungible RGB asset")
+            (@arg testnet: -T --testnet conflicts_with[signet regtest liquid] "Issues asset on Bitcoin testnet")
+            (@arg signet: -S --signet conflicts_with[testnet regtest liquid] "Issues asset on Bitcoin signet network")
+            (@arg regtest: -R --regtest conflicts_with[signet testnet liquid] "Issues asset on Bitcoin rigtest network")
+            (@arg liquid: -L --liquid conflicts_with[signet regtest testnet] "Issues asset on Liquid network")
+            (@arg ticker: <TICKER> "Ticker name for the issued asset")
+            (@arg name: <name> "Asset name")
+            (@arg balance: <balance> "Balance of the generated assets to allocate")
+            (@arg txid: <txid> "Txid to bind the issued asset to")
+            (@arg vout: <vout> "Output number within the given transaction if to bind the issued asset to")
+            (@arg dest: [FILE] "Genesis output file in RGB format; if no provided prints to stdout")
+            (@arg description: -d --description +takes_value "Asset detailed description")
+            (@arg precision: -p --precision +takes_value "Precision, i.e. number of digits reserved for fractional part")
+            (@arg dust: -l --("dust-limit") [dust] "Dust limit for asset transfers; defaults to no limit")
+        )
     ).get_matches();
+    /*
+            (@subcommand ("state-genesis") =>
+            (about: "generates genesis state file")
+            (@arg SCHEMA: * +case_insensitive possible_value[fungible collectible] "Name of the schema")
+            (@arg meta: -m --meta +takes_value ... "Adds metadata field in format <>")
+            (@arg state: -s --s +takes_value ... "Adds state date bound to a seal")
+            (@arg DEST: +takes_value +required "Genesis output file in RGB format")
+        )
+    */
 
     unsafe {
         CONFIG.verbosity = Verbosity::from(matches.occurrences_of("verbose"));
@@ -293,13 +368,49 @@ fn main() -> io::Result<()> {
             sm.value_of("TX_OUTFILE").unwrap(),
             sm.value_of("CV_OUTFILE").unwrap()
         ),
-        ("schema-id", Some(sm)) => schema_id(
-            sm.value_of("NAME").expect("required argument"),
-            value_t!(sm, "format", DisplayFormat).expect("argument has a default value"),
-        ),
-        ("schema-data", Some(sm)) => schema_data(
-            sm.value_of("NAME").expect("required argument"),
-            value_t!(sm, "format", DisplayFormat).expect("argument has a default value"),
+        ("schema-id", Some(sm)) => {
+            let name = sm.value_of("NAME").expect("required argument");
+            schema_id(
+                name,
+                conv_schema(name).expect("must be a predefined value"),
+                value_t!(sm, "format", DisplayFormat).expect("argument has a default value"),
+            )
+        },
+        ("schema-data", Some(sm)) => {
+            let name = sm.value_of("NAME").expect("required argument");
+            schema_data(
+                name,
+                conv_schema(name).expect("must be a predefined value"),
+                value_t!(sm, "format", DisplayFormat).expect("argument has a default value"),
+            )
+        },
+        /*("state-genesis", Some(sm)) => {
+            let name = sm.value_of("SCHEMA").expect("required argument");
+            state_genesis(
+                name,
+                conv_schema(name).expect("must be a predefined value"),
+                value_t!(sm, "format", DataFormat).expect("argument has a default value"),
+                sm.value_of("SRC").expect("required argument"),
+                sm.value_of("DEST").expect("required argument")
+            )
+        },*/
+        ("issue-fungible", Some(sm)) => issue_fungible(
+            match (sm.is_present("testnet"), sm.is_present("regtest"), sm.is_present("signet"), sm.is_present("liquid")) {
+                (true, false, false, false) => schemata::Network::Testnet,
+                (false, true, false, false) => schemata::Network::Regtest,
+                (false, false, true, false) => schemata::Network::Signet,
+                (false, false, false, true) => schemata::Network::Liquid,
+                _ => schemata::Network::Mainnet,
+            },
+            sm.value_of("ticker").expect("required argument"),
+            sm.value_of("name").expect("required argument"),
+            sm.value_of("description"),
+            value_t!(sm, "precision", u8).unwrap_or(0),
+            conv_amount(value_t!(sm, "balance", u64).expect("argument must be a 256-bit unsigned integer")).unwrap(),
+            value_t!(sm, "dust", u64).ok().and_then(conv_uint256),
+            conv_txid(sm.value_of("txid").expect("required argument")).expect("not a valid transaction id"),
+            value_t!(sm, "vout", u16).expect("argument must be a 16-bit unsigned integer"),
+            &mut *conv_file_or_stdout(sm.value_of("dest")).expect("unable to write to the specified file")
         ),
         _ => (),
     }
@@ -470,7 +581,7 @@ fn cv_commit(fee: u64, entropy: U256, msgs: Vec<&str>,
     for (key, value) in psbt.outputs[output_no].hd_keypaths.iter() {
         let pk_cmt = PubkeyCommitment::commit_to(key.key, commitment)
             .expect("internal error with public key commitment");
-        new_outputs.insert(BitcoinPublicKey{ compressed: true, key: pk_cmt.tweaked }, value.clone());
+        new_outputs.insert(bitcoin::PublicKey{ compressed: true, key: pk_cmt.tweaked }, value.clone());
     }
     vprintln!(Verbose, "- {} public key are tweaked", new_outputs.len());
     psbt.outputs[output_no].hd_keypaths = new_outputs;
@@ -483,13 +594,8 @@ fn cv_commit(fee: u64, entropy: U256, msgs: Vec<&str>,
     vprintln!(Verbose, "success");
 }
 
-fn schema_id(name: &str, format: DisplayFormat) {
+fn schema_id(name: &str, schema: &Schema, format: DisplayFormat) {
     vprintln!(Laconic, "Schema ID for {} in {} format", name, format);
-    let schema = match name {
-        "fungible" => Rgb1::get_schema(),
-        "collectible" => Rgb2::get_schema(),
-        _ => panic!("Unknown schema name: {}", format),
-    };
     let schema_id = schema.schema_id();
     println!("{}", match format {
         DisplayFormat::Hex => schema_id.to_hex(),
@@ -498,12 +604,48 @@ fn schema_id(name: &str, format: DisplayFormat) {
     });
 }
 
-fn schema_data(name: &str, format: DisplayFormat) {
+fn schema_data(name: &str, schema: &Schema, format: DisplayFormat) {
     vprintln!(Laconic, "Schema ID for {} in {} format", name, format);
-    let schema = match name {
-        "fungible" => Rgb1::get_schema(),
-        "collectible" => Rgb2::get_schema(),
-        _ => panic!("Unknown schema name: {}", format),
-    };
     println!("{}", storage_serialize(schema).unwrap().to_hex());
+}
+
+/*
+fn state_genesis(name: &str, schema: &Schema, format: DataFormat, src: &str, dest: Box<dyn io::Write>) {
+    vprintln!(Laconic, "Creating a genesis state from {} using schema {}", src, name);
+
+
+}
+*/
+
+fn issue_fungible(network: schemata::Network, ticker: &str, name: &str, descr: Option<&str>,
+                  precision: u8, balance: rgb::Amount, dust: Option<Uint256>,
+                  txid: Txid, vout: u16, ostream: &mut dyn io::Write) {
+    vprintln!(
+        Laconic, "Issuing fungible asset ${} ({}) with balance of {} allocated to {}:{}",
+        ticker, name, balance, txid, vout
+    );
+
+    // Doing this b/c Bitcoin protocol does not limit to 16-bit indexes, while RGB does
+    let vout: u32 = vout as u32;
+
+    vprint!(Verbose, "Initializing genesis state data ... ");
+    let genesis = Rgb1::issue(
+        network, ticker, name, descr,
+        map!{
+            bitcoin::OutPoint{ txid, vout } => balance
+        },
+        precision, None, dust
+    ).unwrap_or_else(|err| {
+        vprintln!(Verbose, " failed due to an error {:?}", err);
+        panic!("Exiting because of error");
+    });
+    vprintln!(Verbose, "success");
+
+    let asset_id = genesis.commitment_id()
+        .expect("Probability of the commitment generation failure is less then negligible");
+    vprintln!(Verbose, "Issues asset id (genesis state hash) is: {}", asset_id.to_hex());
+
+    vprint!(Verbose, "Saving issuance state data ... ");
+    genesis.storage_serialize(ostream);
+    vprintln!(Verbose, "success");
 }
