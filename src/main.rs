@@ -5,6 +5,7 @@ extern crate bigint;
 extern crate bech32;
 #[macro_use] extern crate clap;
 
+use core::panic;
 use std::{
     io::{self, Read, Write},
     fs::{self, File},
@@ -41,6 +42,7 @@ use lnpbp::{
         self,
         state, data,
         schema::Schema,
+        commit::Identifiable,
         schemata::{self, Schemata, Rgb1, Rgb2},
     }
 };
@@ -669,7 +671,7 @@ fn fungible_issue(network: schemata::Network, ticker: &str, name: &str, descr: O
     });
     vprintln!(Verbose, "success");
 
-    let asset_id = genesis.commitment_id()
+    let asset_id = genesis.commitment()
         .expect("Probability of the commitment generation failure is less then negligible");
     let readable_id = bech32::encode(
         format!("rgb:{}:", ticker.to_lowercase()).as_str(),
