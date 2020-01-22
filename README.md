@@ -36,3 +36,13 @@ lbx cv-commit test/data/dest_tx.psbt test/data/client_proofs.rgb \
     --tx test/data/source_tx.psbt \
     -v -v # Asking to be verbose
 ```
+
+Issues fungible asset named "Candy" with ticker $CNDY for Bitcoin Signet network:
+```shell script
+lbx issue-fungible --signet CNDY Candies 1000000 c202e4bbda988744f45650fc207da3531209dd1813efd701042d21692844bb2f 0 test/data/candies.rgb -v -v
+```
+
+Generates client-validated proof of the fungible asset transfer:
+```shell script
+lbx fungible-transfer c202e4bbda988744f45650fc207da3531209dd1813efd701042d21692844bb2f:1:100 -v -v
+```
