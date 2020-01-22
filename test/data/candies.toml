@@ -1,0 +1,12 @@
+[aseet]
+ver=1
+network="bitcoin:signet"
+ticker="CANDY"
+title="RGB Candies"
+description="Protoscam of no value"
+fractional_bits=0 # Candies are indivisible! :)
+dust_limit=1 # One candy is always one candy!
+
+[allocation]
+to="5700bdccfc6209a5460dc124403eed6c3f5ba58da0123b392ab0b1fa23306f27:0"
+amount=1_000_000 # Because everyone wants to be a candy-millionaire!
