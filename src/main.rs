@@ -39,7 +39,7 @@ use lnpbp::{
     },
     rgb::{
         self,
-        state,
+        state, data,
         schema::Schema,
         schemata::{self, Schemata, Rgb1, Rgb2},
     }
@@ -132,7 +132,7 @@ impl AsSlice for Message<'_> {
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct BalanceAllocation(Txid, u16, rgb::Amount);
+struct BalanceAllocation(Txid, u16, data::Amount);
 
 fn main() -> io::Result<()> {
     fn conv_file_or_stdout(file_name: Option<&str>) -> Result<Box<dyn io::Write>, io::Error> {
@@ -163,8 +163,8 @@ fn main() -> io::Result<()> {
     fn conv_uint256(val: u64) -> Option<Uint256> {
         Uint256::from_u64(val)
     }
-    fn conv_amount(val: u64) -> Option<rgb::Amount> {
-        rgb::Amount::from_u64(val)
+    fn conv_amount(val: u64) -> Option<data::Amount> {
+        data::Amount::from_u64(val)
     }
     fn conv_digest(hexdec_str: &str) -> Result<sha256::Hash, String> {
         match sha256::Hash::from_hex(hexdec_str) {
@@ -646,7 +646,7 @@ fn state_genesis(name: &str, schema: &Schema, format: DataFormat, src: &str, des
 */
 
 fn fungible_issue(network: schemata::Network, ticker: &str, name: &str, descr: Option<&str>,
-                  precision: u8, balance: rgb::Amount, dust: Option<Uint256>,
+                  precision: u8, balance: data::Amount, dust: Option<Uint256>,
                   txid: Txid, vout: u16, ostream: &mut dyn io::Write) {
     vprintln!(
         Laconic, "Issuing fungible asset ${} ({}) with balance of {} allocated to {}:{}",
