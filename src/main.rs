@@ -15,7 +15,7 @@ use std::{
 };
 
 use rand::Rng;
-use bech32::ToBase32;
+use bech32::*;
 use bigint::U256;
 
 use lnpbp::bitcoin::{
@@ -643,7 +643,13 @@ fn issue_fungible(network: schemata::Network, ticker: &str, name: &str, descr: O
 
     let asset_id = genesis.commitment_id()
         .expect("Probability of the commitment generation failure is less then negligible");
-    vprintln!(Verbose, "Issues asset id (genesis state hash) is: {}", asset_id.to_hex());
+    let readable_id = bech32::encode(
+        format!("rgb:{}:", ticker.to_lowercase()).as_str(),
+        asset_id.to_vec().to_base32()
+    ).expect("Proper hash has always to be encoded into bech32");
+    vprintln!(Verbose, "Issued asset id (genesis state hash) are:");
+    vprintln!(Verbose, "\t{}", asset_id.to_hex());
+    vprintln!(Verbose, "\t{}", readable_id);
 
     vprint!(Verbose, "Saving issuance state data ... ");
     genesis.storage_serialize(ostream);
