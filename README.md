@@ -18,6 +18,11 @@ cd lbx
 cargo build
 ```
 
+If the build fails, make sure you are using nightly channel for rust compiler:
+```shell script
+rustup default nightly
+```
+
 ## Sample commands
 
 Note: run `lbx` command in `target/debug` or `target/release` directories inside the repository.
