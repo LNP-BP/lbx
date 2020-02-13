@@ -40,7 +40,7 @@ use lnpbp::{
     },
     rgb::{
         self,
-        state, data,
+        state, data, data::amount,
         schema::Schema,
         commit::Identifiable,
         schemata::{self, Schemata, Rgb1, Rgb2},
@@ -166,7 +166,8 @@ fn main() -> io::Result<()> {
         Uint256::from_u64(val)
     }
     fn conv_amount(val: u64) -> Option<data::Amount> {
-        data::Amount::from_u64(val)
+        Some(val)
+        // data::Amount::from_u64(val)
     }
     fn conv_digest(hexdec_str: &str) -> Result<sha256::Hash, String> {
         match sha256::Hash::from_hex(hexdec_str) {
@@ -534,7 +535,7 @@ fn bp_tweak(digest: sha256::Hash, pubkey: PublicKey) {
 fn pubkey_commit(msg: &[u8], pubkey: PublicKey) {
     vprintln!(Laconic, "Committing to the message by tweaking the provided public key");
     let msg = Message(msg);
-    let commitment = PubkeyCommitment::commit_to(pubkey, msg).unwrap();
+    let commitment = PubkeyCommitment::commit_to(pubkey, &msg).unwrap();
     // let commitment: PubkeyCommitment = msg.commit_embed(&pubkey).unwrap();
     println!("{}", commitment.tweaked.to_hex());
 }
@@ -609,7 +610,7 @@ fn cv_commit(fee: u64, entropy: U256, msgs: Vec<&str>,
     vprintln!(Verbose, "- {} outputs found, using output #{} for embedding", output_count, output_no);
     let mut new_outputs = BTreeMap::new();
     for (key, value) in psbt.outputs[output_no].hd_keypaths.iter() {
-        let pk_cmt = PubkeyCommitment::commit_to(key.key, commitment)
+        let pk_cmt = PubkeyCommitment::commit_to(key.key, &commitment)
             .expect("internal error with public key commitment");
         new_outputs.insert(bitcoin::PublicKey{ compressed: true, key: pk_cmt.tweaked }, value.clone());
     }
@@ -659,10 +660,11 @@ fn fungible_issue(network: schemata::Network, ticker: &str, name: &str, descr: O
     let vout: u32 = vout as u32;
 
     vprint!(Verbose, "Initializing genesis state data ... ");
+    let ca = amount::Confidential::from(balance);
     let genesis = Rgb1::issue(
         network, ticker, name, descr,
         map!{
-            bitcoin::OutPoint{ txid, vout } => balance
+            bitcoin::OutPoint{ txid, vout } => ca.commitment
         },
         precision, None, dust
     ).unwrap_or_else(|err| {
@@ -689,7 +691,8 @@ fn fungible_issue(network: schemata::Network, ticker: &str, name: &str, descr: O
 fn fungible_tranfer(allocations: Vec<BalanceAllocation>, ostream: &mut dyn io::Write) {
     let map = allocations.into_iter().fold(
         HashMap::new(), |mut acc, alloc| {
-            acc.insert(bitcoin::OutPoint { txid: alloc.0, vout: alloc.1 as u32 }, alloc.2);
+            let ca = amount::Confidential::from(alloc.2);
+            acc.insert(bitcoin::OutPoint { txid: alloc.0, vout: alloc.1 as u32 }, ca.commitment);
             acc
         }
     );

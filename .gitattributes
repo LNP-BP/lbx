@@ -1,0 +1,2 @@
+*.bin diff=bin
+*.rgb diff=bin
