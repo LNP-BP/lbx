@@ -691,24 +691,31 @@ fn fungible_issue(network: schemata::Network, ticker: &str, name: &str, descr: O
 fn fungible_tranfer(allocations: Vec<BalanceAllocation>, ostream: &mut dyn io::Write) {
     let map = allocations.into_iter().fold(
         HashMap::new(), |mut acc, alloc| {
+            vprintln!(
+                Laconic, "Transferring {} of some asset (the protocol implies no knowledge of its type) to {}:{}",
+                alloc.2, alloc.0, alloc.1
+            );
             let ca = amount::Confidential::from(alloc.2);
             acc.insert(bitcoin::OutPoint { txid: alloc.0, vout: alloc.1 as u32 }, ca.commitment);
             acc
         }
     );
-    map.iter().for_each(|entry|
-        vprintln!(
-            Laconic, "Transferring {} of some asset (the protocol implies no knowledge of its type) to {}:{}",
-            entry.1, entry.0.txid, entry.0.vout
-        )
-    );
 
-    let tansfer = Rgb1::transfer(map).unwrap_or_else(|err| {
+    let transfer = Rgb1::transfer(map).unwrap_or_else(|err| {
         vprintln!(Verbose, " failed due to an error {:?}", err);
         panic!("Exiting because of error");
     });
 
+    let commitment = transfer.commitment()
+        .expect("Probability of the commitment generation failure is less then negligible");
+    let readable_id = bech32::encode(
+        "rgb", commitment.to_vec().to_base32()
+    ).expect("Proper hash has always to be encoded into bech32");
+    vprintln!(Verbose, "Asset transfer id (state transition commitment) is:");
+    vprintln!(Verbose, "\t{}", commitment.to_hex());
+    vprintln!(Verbose, "\t{}", readable_id);
+
     vprint!(Verbose, "Saving transfer data ... ");
-    tansfer.storage_serialize(ostream);
+    transfer.storage_serialize(ostream);
     vprintln!(Verbose, "success");
 }
