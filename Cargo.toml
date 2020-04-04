@@ -9,7 +9,7 @@ readme = "README.md"
 edition = "2018"
 
 [dependencies]
-lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", tag = "v0.1.0-alpha.1" }
+lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", branch = "master" }
 bech32 = "~0.7"
 log = "~0.4"
 env_logger = "~0.7"
