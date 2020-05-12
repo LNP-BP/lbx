@@ -3,7 +3,8 @@ extern crate rand;
 extern crate bigint;
 #[macro_use] extern crate lnpbp;
 extern crate bech32;
-#[macro_use] extern crate clap;
+#[macro_use]
+extern crate clap;
 
 use core::panic;
 use std::{

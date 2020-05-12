@@ -9,7 +9,7 @@ readme = "README.md"
 edition = "2018"
 
 [dependencies]
-lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", branch = "master" }
+lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", branch = "master", features = ["all"] }
 bech32 = "~0.7"
 log = "~0.4"
 env_logger = "~0.7"
@@ -25,5 +25,4 @@ features = [ "std" ]
 [dependencies.clap]
 # Fix this by switching to the crate released version after 2.34+
 git = "https://github.com/clap-rs/clap.git"
-branch = "master"
-default-features = true
+branch = "v2-master"
