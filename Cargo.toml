@@ -1,6 +1,6 @@
 [package]
 name = "lbx"
-version = "0.1.0"
+version = "0.2.0"
 license = "MIT"
 authors = ["Dr. Maxim Orlovsky <orlovsky@pandoracore.com>"]
 description = "Command-line tool for working with LNP/BP technology stack"
@@ -9,20 +9,14 @@ readme = "README.md"
 edition = "2018"
 
 [dependencies]
-lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", branch = "master", features = ["all"] }
 bech32 = "~0.7"
 log = "~0.4"
 env_logger = "~0.7"
 toml = "~0.5"
+yaml = "~0.3"
+derive_wrapper = "~0.1"
 serde = "~1.0"
 serde_derive = "~1.0"
 rand = "~0.7"
-
-[dependencies.bigint]
-version = "~4.4"
-features = [ "std" ]
-
-[dependencies.clap]
-# Fix this by switching to the crate released version after 2.34+
-git = "https://github.com/clap-rs/clap.git"
-branch = "v2-master"
+clap = "=3.0.0-beta.1"
+lnpbp = { git = "https://github.com/lnp-bp/rust-lnpbp.git", branch = "develop", features = ["all"] }
