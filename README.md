@@ -7,7 +7,8 @@ Command-line tool for working with LNP/BP technology stack
 ### Get the dependencies
 
 ```shell script
-sudo apt-get install cargo
+sudo apt-get install -y rustup libyaml-dev
+rustup default nightly
 ```
 
 ### Clone and compile lbx
@@ -15,7 +16,7 @@ sudo apt-get install cargo
 ```shell script
 git clone https://github.com/lnp-bp/lbx
 cd lbx
-cargo build
+cargo install --path .
 ```
 
 If the build fails, make sure you are using nightly channel for rust compiler:
@@ -24,8 +25,6 @@ rustup default nightly
 ```
 
 ## Sample commands
-
-Note: run `lbx` command in `target/debug` or `target/release` directories inside the repository.
 
 Commits to the message by tweaking the public key according to LNPBP-1 standard:
 ```shell script
