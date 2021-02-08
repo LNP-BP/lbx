@@ -11,22 +11,18 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-#![feature(never_type)]
-
-#[macro_use]
-extern crate derive_wrapper;
-
 use clap::Clap;
-use log::*;
-use std::env;
 
-#[derive(Clap, Clone, Debug, Display)]
-#[display_from(Debug)]
+use bitcoin::hashes::hex::FromHex;
+use bitcoin::hashes::{sha256d, Hash};
+use bitcoin::BlockHash;
+
+#[derive(Clap, Clone, Debug)]
 #[clap(
     name = "lbx",
-    version = "0.1.0-beta.2",
+    version = "0.2.0",
     author = "Dr Maxim Orlovsky <orlovsky@pandoracore.com>",
-    about = "RGB node command-line interface; part of Lightning network protocol suite"
+    about = "Command-line tool for working with LNP/BP technology stack"
 )]
 pub struct Opts {
     /// Sets verbosity level; can be used multiple times to increase verbosity
@@ -38,38 +34,52 @@ pub struct Opts {
     pub command: Command,
 }
 
-#[derive(Clap, Clone, Debug, Display)]
-#[display_from(Debug)]
-pub enum Command {}
+#[derive(Clap, Clone, Debug)]
+pub enum Command {
+    HexDump {
+        /// Use hexadecimal encoding
+        #[clap(short = 'x', long, takes_value = false)]
+        hex: bool,
+
+        /// Use little-endian hex encoding as for block hash value
+        #[clap(short, long, takes_value = false)]
+        little_endian: bool,
+
+        /// Hex value to dump
+        value: String,
+    },
+}
 
 impl Command {
-    pub fn exec(&self) -> Result<(), Error> {
-        Ok(())
+    pub fn exec(self) {
+        match self {
+            Command::HexDump {
+                hex,
+                little_endian,
+                value,
+            } => {
+                let slice = if little_endian {
+                    BlockHash::from_hex(&value).map(|h| *h.as_inner())
+                } else {
+                    sha256d::Hash::from_hex(&value).map(|h| *h.as_inner())
+                }
+                .expect("error in the provided hex value");
+                if hex {
+                    print!("[");
+                    for byte in &slice {
+                        print!("{:#04X}, ", byte);
+                    }
+                    println!("]");
+                } else {
+                    println!("[{:03?}]", slice);
+                }
+            }
+        }
     }
 }
 
-#[derive(Clone, Debug, Display, From, Error)]
-#[display_from(Debug)]
-pub enum Error {}
-
-fn main() -> Result<(), Error> {
+fn main() {
     let opts = Opts::parse();
-
-    if env::var("RUST_LOG").is_err() {
-        env::set_var(
-            "RUST_LOG",
-            match opts.verbose {
-                0 => "error",
-                1 => "warn",
-                2 => "info",
-                3 => "debug",
-                4 => "trace",
-                _ => "trace",
-            },
-        );
-    }
-    env_logger::init();
-    log::set_max_level(LevelFilter::Trace);
 
     opts.command.exec()
 }
