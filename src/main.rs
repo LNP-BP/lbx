@@ -15,7 +15,6 @@ use clap::Clap;
 
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::hashes::{sha256d, Hash};
-use bitcoin::BlockHash;
 
 #[derive(Clap, Clone, Debug)]
 #[clap(
@@ -41,9 +40,9 @@ pub enum Command {
         #[clap(short = 'x', long, takes_value = false)]
         hex: bool,
 
-        /// Use little-endian hex encoding as for block hash value
+        /// Use reversed (big-endian) hex encoding
         #[clap(short, long, takes_value = false)]
-        little_endian: bool,
+        reverse: bool,
 
         /// Hex value to dump
         value: String,
@@ -55,15 +54,15 @@ impl Command {
         match self {
             Command::HexDump {
                 hex,
-                little_endian,
+                reverse,
                 value,
             } => {
-                let slice = if little_endian {
-                    BlockHash::from_hex(&value).map(|h| *h.as_inner())
-                } else {
-                    sha256d::Hash::from_hex(&value).map(|h| *h.as_inner())
+                let mut slice = sha256d::Hash::from_hex(&value)
+                    .expect("error in the provided hex value")
+                    .into_inner();
+                if reverse {
+                    slice.reverse();
                 }
-                .expect("error in the provided hex value");
                 if hex {
                     print!("[");
                     for byte in &slice {
